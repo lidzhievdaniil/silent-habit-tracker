@@ -98,10 +98,7 @@
         }
 
         .stat-value.streak {
-            background: linear-gradient(135deg, var(--streak-start) 0%, var(--streak-end) 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
+            color: var(--success);
         }
 
         .stat-label {
@@ -281,10 +278,7 @@
         }
 
         .habit-streak.active {
-            background: linear-gradient(135deg, var(--streak-start) 0%, var(--streak-end) 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
+            color: var(--success);
         }
 
         .habit-icon {
@@ -299,34 +293,35 @@
         }
 
         .habit-delete {
-            width: 32px;
-            height: 32px;
-            border-radius: 50%;
-            background: transparent;
+            width: 28px;
+            height: 28px;
+            border-radius: 8px;
+            background: var(--bg-secondary);
             border: none;
             color: var(--text-muted);
             cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: center;
-            opacity: 0;
+            opacity: 0.7;
             transition: all 0.2s ease;
-            position: absolute;
-            right: 12px;
-        }
-
-        .habit-card:hover .habit-delete {
-            opacity: 1;
+            flex-shrink: 0;
+            margin-left: 8px;
         }
 
         .habit-delete:hover {
-            background: rgba(255, 59, 48, 0.1);
+            background: rgba(255, 59, 48, 0.15);
             color: var(--danger);
+            opacity: 1;
+        }
+
+        .habit-delete:active {
+            transform: scale(0.9);
         }
 
         .habit-delete svg {
-            width: 16px;
-            height: 16px;
+            width: 14px;
+            height: 14px;
         }
 
         /* Add habit */
@@ -502,12 +497,51 @@
         .habit-card.just-completed .habit-checkbox {
             animation: pulse 0.3s ease;
         }
+
+        /* Confetti animation */
+        .confetti-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 9999;
+            overflow: hidden;
+        }
+
+        .confetti {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            opacity: 0;
+        }
+
+        .confetti.circle {
+            border-radius: 50%;
+        }
+
+        .confetti.star {
+            clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
+        }
+
+        @keyframes confetti-fall {
+            0% {
+                opacity: 1;
+                transform: translateY(0) rotate(0deg) scale(1);
+            }
+            100% {
+                opacity: 0;
+                transform: translateY(400px) rotate(720deg) scale(0);
+            }
+        }
     </style>
 </head>
 <body>
+    <div class="confetti-container" id="confettiContainer"></div>
     <div class="container">
         <header class="header">
-            <div class="logo">Silent</div>
+            <div class="logo">SILENT</div>
             <div class="tagline">Habits</div>
         </header>
 
@@ -770,12 +804,37 @@
             return 'дней';
         }
 
+        // Confetti animation
+        function createConfetti(x, y) {
+            const container = document.getElementById('confettiContainer');
+            const colors = ['#34C759', '#007AFF', '#5E5CE6', '#FF9500', '#FF2D55', '#AF52DE'];
+            const shapes = ['circle', 'star'];
+
+            for (let i = 0; i < 12; i++) {
+                const confetti = document.createElement('div');
+                const shape = shapes[Math.floor(Math.random() * shapes.length)];
+                confetti.className = `confetti ${shape}`;
+                confetti.style.left = `${x + (Math.random() - 0.5) * 60}px`;
+                confetti.style.top = `${y}px`;
+                confetti.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+                confetti.style.width = `${6 + Math.random() * 8}px`;
+                confetti.style.height = confetti.style.width;
+                confetti.style.animation = `confetti-fall ${0.8 + Math.random() * 0.4}s ease-out forwards`;
+                confetti.style.animationDelay = `${Math.random() * 0.1}s`;
+
+                container.appendChild(confetti);
+
+                setTimeout(() => confetti.remove(), 1500);
+            }
+        }
+
         function toggleHabit(id) {
             const today = getTodayKey();
             if (!completedToday[today]) {
                 completedToday[today] = {};
             }
 
+            const wasCompleted = completedToday[today][id];
             completedToday[today][id] = !completedToday[today][id];
             updateStreaks();
 
@@ -789,9 +848,13 @@
             renderWeekView();
 
             const card = document.querySelector(`[data-id="${id}"]`);
-            if (completedToday[today][id]) {
+            if (completedToday[today][id] && !wasCompleted) {
                 card.classList.add('just-completed');
                 setTimeout(() => card.classList.remove('just-completed'), 300);
+
+                // Trigger confetti
+                const rect = card.getBoundingClientRect();
+                createConfetti(rect.left + 30, rect.top + rect.height / 2);
             }
         }
 
