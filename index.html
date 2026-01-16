@@ -498,8 +498,8 @@
             animation: pulse 0.3s ease;
         }
 
-        /* Confetti animation */
-        .confetti-container {
+        /* Celebration animation */
+        .celebration-container {
             position: fixed;
             top: 0;
             left: 0;
@@ -510,35 +510,31 @@
             overflow: hidden;
         }
 
-        .confetti {
+        .particle {
             position: absolute;
-            width: 10px;
-            height: 10px;
-            opacity: 0;
+            pointer-events: none;
         }
 
-        .confetti.circle {
-            border-radius: 50%;
-        }
-
-        .confetti.star {
+        .particle.star {
+            width: 20px;
+            height: 20px;
+            background: currentColor;
             clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
         }
 
-        @keyframes confetti-fall {
-            0% {
-                opacity: 1;
-                transform: translateY(0) rotate(0deg) scale(1);
-            }
-            100% {
-                opacity: 0;
-                transform: translateY(400px) rotate(720deg) scale(0);
-            }
+        .particle.circle {
+            border-radius: 50%;
+        }
+
+        .particle.spark {
+            width: 4px;
+            height: 16px;
+            border-radius: 2px;
         }
     </style>
 </head>
 <body>
-    <div class="confetti-container" id="confettiContainer"></div>
+    <div class="celebration-container" id="celebrationContainer"></div>
     <div class="container">
         <header class="header">
             <div class="logo">SILENT</div>
@@ -804,27 +800,112 @@
             return 'дней';
         }
 
-        // Confetti animation
-        function createConfetti(x, y) {
-            const container = document.getElementById('confettiContainer');
-            const colors = ['#34C759', '#007AFF', '#5E5CE6', '#FF9500', '#FF2D55', '#AF52DE'];
-            const shapes = ['circle', 'star'];
+        // Celebration animation - fireworks effect
+        function createCelebration() {
+            const container = document.getElementById('celebrationContainer');
+            const colors = ['#34C759', '#007AFF', '#5E5CE6', '#FF9500', '#FF2D55', '#AF52DE', '#FFD60A', '#30D158'];
 
-            for (let i = 0; i < 12; i++) {
-                const confetti = document.createElement('div');
-                const shape = shapes[Math.floor(Math.random() * shapes.length)];
-                confetti.className = `confetti ${shape}`;
-                confetti.style.left = `${x + (Math.random() - 0.5) * 60}px`;
-                confetti.style.top = `${y}px`;
-                confetti.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
-                confetti.style.width = `${6 + Math.random() * 8}px`;
-                confetti.style.height = confetti.style.width;
-                confetti.style.animation = `confetti-fall ${0.8 + Math.random() * 0.4}s ease-out forwards`;
-                confetti.style.animationDelay = `${Math.random() * 0.1}s`;
+            const centerX = window.innerWidth / 2;
+            const centerY = window.innerHeight / 2;
 
-                container.appendChild(confetti);
+            // Create multiple bursts
+            const bursts = [
+                { x: centerX, y: centerY, delay: 0 },
+                { x: centerX - 80, y: centerY - 60, delay: 100 },
+                { x: centerX + 80, y: centerY - 40, delay: 200 },
+            ];
 
-                setTimeout(() => confetti.remove(), 1500);
+            bursts.forEach(burst => {
+                setTimeout(() => createBurst(burst.x, burst.y), burst.delay);
+            });
+
+            function createBurst(originX, originY) {
+                const particleCount = 24;
+
+                for (let i = 0; i < particleCount; i++) {
+                    const particle = document.createElement('div');
+                    const isstar = Math.random() > 0.5;
+                    const isSpark = Math.random() > 0.7;
+
+                    if (isSpark) {
+                        particle.className = 'particle spark';
+                    } else if (isstar) {
+                        particle.className = 'particle star';
+                    } else {
+                        particle.className = 'particle circle';
+                    }
+
+                    const color = colors[Math.floor(Math.random() * colors.length)];
+                    const angle = (i / particleCount) * 360 + (Math.random() - 0.5) * 30;
+                    const velocity = 200 + Math.random() * 300;
+                    const size = isSpark ? 4 : (12 + Math.random() * 16);
+                    const duration = 1.5 + Math.random() * 1;
+
+                    const radians = angle * (Math.PI / 180);
+                    const destX = Math.cos(radians) * velocity;
+                    const destY = Math.sin(radians) * velocity;
+
+                    particle.style.cssText = `
+                        left: ${originX}px;
+                        top: ${originY}px;
+                        width: ${size}px;
+                        height: ${isSpark ? size * 3 : size}px;
+                        background: ${color};
+                        color: ${color};
+                        box-shadow: 0 0 ${size}px ${color}40;
+                        transform: translate(-50%, -50%) rotate(${angle}deg);
+                        opacity: 1;
+                        transition: all ${duration}s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+                    `;
+
+                    container.appendChild(particle);
+
+                    // Trigger animation
+                    requestAnimationFrame(() => {
+                        requestAnimationFrame(() => {
+                            particle.style.transform = `translate(calc(-50% + ${destX}px), calc(-50% + ${destY}px)) rotate(${angle + 360}deg) scale(0.2)`;
+                            particle.style.opacity = '0';
+                        });
+                    });
+
+                    setTimeout(() => particle.remove(), duration * 1000 + 100);
+                }
+
+                // Add extra sparkles
+                for (let i = 0; i < 12; i++) {
+                    setTimeout(() => {
+                        const sparkle = document.createElement('div');
+                        sparkle.className = 'particle circle';
+
+                        const color = colors[Math.floor(Math.random() * colors.length)];
+                        const offsetX = (Math.random() - 0.5) * 100;
+                        const offsetY = (Math.random() - 0.5) * 100;
+                        const size = 6 + Math.random() * 10;
+
+                        sparkle.style.cssText = `
+                            left: ${originX + offsetX}px;
+                            top: ${originY + offsetY}px;
+                            width: ${size}px;
+                            height: ${size}px;
+                            background: ${color};
+                            box-shadow: 0 0 ${size * 2}px ${color};
+                            transform: translate(-50%, -50%) scale(1);
+                            opacity: 1;
+                            transition: all 0.8s ease-out;
+                        `;
+
+                        container.appendChild(sparkle);
+
+                        requestAnimationFrame(() => {
+                            requestAnimationFrame(() => {
+                                sparkle.style.transform = 'translate(-50%, -50%) scale(0)';
+                                sparkle.style.opacity = '0';
+                            });
+                        });
+
+                        setTimeout(() => sparkle.remove(), 900);
+                    }, Math.random() * 300);
+                }
             }
         }
 
@@ -852,9 +933,8 @@
                 card.classList.add('just-completed');
                 setTimeout(() => card.classList.remove('just-completed'), 300);
 
-                // Trigger confetti
-                const rect = card.getBoundingClientRect();
-                createConfetti(rect.left + 30, rect.top + rect.height / 2);
+                // Trigger celebration
+                createCelebration();
             }
         }
 
