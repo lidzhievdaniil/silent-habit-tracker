@@ -944,6 +944,14 @@
             }
 
             habits = habits.filter(h => h.id !== id);
+
+            // Remove completed progress for this habit
+            Object.keys(completedToday).forEach(dateKey => {
+                if (completedToday[dateKey][id]) {
+                    delete completedToday[dateKey][id];
+                }
+            });
+
             saveData();
             renderHabits();
             renderStats();
