@@ -531,11 +531,201 @@
             height: 16px;
             border-radius: 2px;
         }
+
+        /* Reminder button */
+        .reminder-btn {
+            position: absolute;
+            top: 20px;
+            right: 16px;
+            width: 40px;
+            height: 40px;
+            border-radius: 12px;
+            background: var(--bg-secondary);
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+        }
+
+        .reminder-btn:hover {
+            background: var(--bg-card);
+            color: var(--text-primary);
+        }
+
+        .reminder-btn.active {
+            color: var(--accent);
+        }
+
+        .reminder-btn svg {
+            width: 20px;
+            height: 20px;
+        }
+
+        /* Reminder modal */
+        .reminder-modal {
+            width: 100%;
+            max-width: 420px;
+            background: var(--bg-secondary);
+            border-radius: 20px 20px 0 0;
+            padding: 20px 20px 40px;
+            transform: translateY(100%);
+            transition: transform 0.3s ease;
+        }
+
+        .modal-overlay.active .reminder-modal {
+            transform: translateY(0);
+        }
+
+        .time-picker-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 24px;
+        }
+
+        .time-input {
+            width: 80px;
+            padding: 16px;
+            background: var(--bg-card);
+            border: none;
+            border-radius: 12px;
+            color: var(--text-primary);
+            font-size: 32px;
+            font-weight: 600;
+            font-family: inherit;
+            text-align: center;
+            outline: none;
+            -moz-appearance: textfield;
+        }
+
+        .time-input::-webkit-outer-spin-button,
+        .time-input::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+
+        .time-input:focus {
+            box-shadow: 0 0 0 2px var(--accent);
+        }
+
+        .time-separator {
+            font-size: 32px;
+            font-weight: 600;
+            color: var(--text-muted);
+        }
+
+        .reminder-toggle {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px;
+            background: var(--bg-card);
+            border-radius: 12px;
+            margin-bottom: 24px;
+        }
+
+        .reminder-toggle-label {
+            font-size: 16px;
+            font-weight: 500;
+            color: var(--text-primary);
+        }
+
+        .toggle-switch {
+            position: relative;
+            width: 51px;
+            height: 31px;
+            background: var(--border);
+            border-radius: 16px;
+            cursor: pointer;
+            transition: background 0.2s ease;
+        }
+
+        .toggle-switch.active {
+            background: var(--success);
+        }
+
+        .toggle-switch::after {
+            content: '';
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 27px;
+            height: 27px;
+            background: white;
+            border-radius: 50%;
+            transition: transform 0.2s ease;
+        }
+
+        .toggle-switch.active::after {
+            transform: translateX(20px);
+        }
+
+        .modal-buttons {
+            display: flex;
+            gap: 12px;
+        }
+
+        .modal-btn-secondary {
+            flex: 1;
+            padding: 16px;
+            background: var(--bg-card);
+            border: none;
+            border-radius: 12px;
+            color: var(--text-secondary);
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            font-family: inherit;
+            transition: all 0.2s ease;
+        }
+
+        .modal-btn-secondary:hover {
+            background: var(--bg-card-hover);
+        }
+
+        .modal-btn-primary {
+            flex: 1;
+            padding: 16px;
+            background: var(--accent);
+            border: none;
+            border-radius: 12px;
+            color: white;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            font-family: inherit;
+            transition: all 0.2s ease;
+        }
+
+        .modal-btn-primary:hover {
+            filter: brightness(1.1);
+        }
+
+        .reminder-status {
+            text-align: center;
+            font-size: 13px;
+            color: var(--text-muted);
+            margin-top: 16px;
+        }
+
+        .reminder-status.active {
+            color: var(--success);
+        }
     </style>
 </head>
 <body>
     <div class="celebration-container" id="celebrationContainer"></div>
     <div class="container">
+        <button class="reminder-btn" id="reminderBtn" title="Напоминания">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+                <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+            </svg>
+        </button>
         <header class="header">
             <div class="logo">SILENT</div>
             <div class="tagline">Habits</div>
@@ -583,6 +773,28 @@
             <div class="section-title" style="margin-bottom: 12px;">Иконка</div>
             <div class="emoji-picker" id="emojiPicker"></div>
             <button class="modal-submit" id="submitHabit" disabled>Добавить</button>
+        </div>
+    </div>
+
+    <!-- Reminder Modal -->
+    <div class="modal-overlay" id="reminderModalOverlay">
+        <div class="reminder-modal">
+            <div class="modal-handle"></div>
+            <div class="modal-title">Напоминания</div>
+            <div class="time-picker-container">
+                <input type="number" class="time-input" id="reminderHour" min="0" max="23" value="09" placeholder="09">
+                <span class="time-separator">:</span>
+                <input type="number" class="time-input" id="reminderMinute" min="0" max="59" value="00" placeholder="00">
+            </div>
+            <div class="reminder-toggle">
+                <span class="reminder-toggle-label">Включить напоминания</span>
+                <div class="toggle-switch" id="reminderToggle"></div>
+            </div>
+            <div class="modal-buttons">
+                <button class="modal-btn-secondary" id="cancelReminder">Отмена</button>
+                <button class="modal-btn-primary" id="saveReminder">Сохранить</button>
+            </div>
+            <div class="reminder-status" id="reminderStatus"></div>
         </div>
     </div>
 
@@ -1031,6 +1243,182 @@
         renderStats();
         renderHabits();
         renderExampleHint();
+
+        // ===============================
+        // Reminder functionality
+        // ===============================
+
+        // API URL - empty string means same origin (frontend served from backend)
+        const API_URL = '';
+
+        // Reminder state
+        let reminderEnabled = false;
+        let reminderTime = { hour: '09', minute: '00' };
+
+        // DOM elements for reminders
+        const reminderBtn = document.getElementById('reminderBtn');
+        const reminderModalOverlay = document.getElementById('reminderModalOverlay');
+        const reminderHourInput = document.getElementById('reminderHour');
+        const reminderMinuteInput = document.getElementById('reminderMinute');
+        const reminderToggle = document.getElementById('reminderToggle');
+        const saveReminderBtn = document.getElementById('saveReminder');
+        const cancelReminderBtn = document.getElementById('cancelReminder');
+        const reminderStatus = document.getElementById('reminderStatus');
+
+        // Get initData for API authorization
+        function getInitData() {
+            return tg?.initData || '';
+        }
+
+        // Load reminder settings from API
+        async function loadReminderSettings() {
+            const initData = getInitData();
+            if (!initData) {
+                updateReminderStatus('Откройте через Telegram');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/api/reminder`, {
+                    headers: {
+                        'X-Telegram-Init-Data': initData
+                    }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.reminder_time) {
+                        const [hour, minute] = data.reminder_time.split(':');
+                        reminderTime = { hour, minute };
+                        reminderEnabled = data.enabled;
+                        updateReminderUI();
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to load reminder:', error);
+            }
+        }
+
+        // Save reminder settings to API
+        async function saveReminderSettings() {
+            const initData = getInitData();
+            if (!initData) {
+                updateReminderStatus('Откройте через Telegram');
+                return;
+            }
+
+            const hour = reminderHourInput.value.padStart(2, '0');
+            const minute = reminderMinuteInput.value.padStart(2, '0');
+            const reminder_time = `${hour}:${minute}`;
+
+            try {
+                if (reminderEnabled) {
+                    const response = await fetch(`${API_URL}/api/reminder`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-Telegram-Init-Data': initData
+                        },
+                        body: JSON.stringify({ reminder_time })
+                    });
+
+                    if (response.ok) {
+                        reminderTime = { hour, minute };
+                        updateReminderStatus(`Напоминание в ${reminder_time}`, true);
+                        if (tg?.HapticFeedback) {
+                            tg.HapticFeedback.notificationOccurred('success');
+                        }
+                    } else {
+                        throw new Error('Failed to save');
+                    }
+                } else {
+                    const response = await fetch(`${API_URL}/api/reminder`, {
+                        method: 'DELETE',
+                        headers: {
+                            'X-Telegram-Init-Data': initData
+                        }
+                    });
+
+                    if (response.ok) {
+                        updateReminderStatus('Напоминания отключены');
+                        if (tg?.HapticFeedback) {
+                            tg.HapticFeedback.notificationOccurred('success');
+                        }
+                    } else {
+                        throw new Error('Failed to delete');
+                    }
+                }
+
+                reminderModalOverlay.classList.remove('active');
+            } catch (error) {
+                console.error('Failed to save reminder:', error);
+                updateReminderStatus('Ошибка сохранения');
+                if (tg?.HapticFeedback) {
+                    tg.HapticFeedback.notificationOccurred('error');
+                }
+            }
+        }
+
+        // Update reminder UI
+        function updateReminderUI() {
+            reminderHourInput.value = reminderTime.hour;
+            reminderMinuteInput.value = reminderTime.minute;
+
+            if (reminderEnabled) {
+                reminderToggle.classList.add('active');
+                reminderBtn.classList.add('active');
+                updateReminderStatus(`Напоминание в ${reminderTime.hour}:${reminderTime.minute}`, true);
+            } else {
+                reminderToggle.classList.remove('active');
+                reminderBtn.classList.remove('active');
+                updateReminderStatus('');
+            }
+        }
+
+        // Update status text
+        function updateReminderStatus(text, isActive = false) {
+            reminderStatus.textContent = text;
+            reminderStatus.classList.toggle('active', isActive);
+        }
+
+        // Format time input
+        function formatTimeInput(input, max) {
+            let value = parseInt(input.value) || 0;
+            value = Math.max(0, Math.min(max, value));
+            input.value = value.toString().padStart(2, '0');
+        }
+
+        // Event listeners for reminder modal
+        reminderBtn.addEventListener('click', () => {
+            updateReminderUI();
+            reminderModalOverlay.classList.add('active');
+        });
+
+        reminderModalOverlay.addEventListener('click', (e) => {
+            if (e.target === reminderModalOverlay) {
+                reminderModalOverlay.classList.remove('active');
+            }
+        });
+
+        reminderToggle.addEventListener('click', () => {
+            reminderEnabled = !reminderEnabled;
+            reminderToggle.classList.toggle('active', reminderEnabled);
+            if (tg?.HapticFeedback) {
+                tg.HapticFeedback.impactOccurred('light');
+            }
+        });
+
+        reminderHourInput.addEventListener('blur', () => formatTimeInput(reminderHourInput, 23));
+        reminderMinuteInput.addEventListener('blur', () => formatTimeInput(reminderMinuteInput, 59));
+
+        saveReminderBtn.addEventListener('click', saveReminderSettings);
+
+        cancelReminderBtn.addEventListener('click', () => {
+            reminderModalOverlay.classList.remove('active');
+        });
+
+        // Load reminder settings on start
+        loadReminderSettings();
     </script>
 </body>
 </html>
