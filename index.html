@@ -726,7 +726,8 @@
         function renderStats() {
             const today = getTodayKey();
             const todayCompleted = completedToday[today] || {};
-            const completedCount = Object.values(todayCompleted).filter(v => v).length;
+            // Count only habits that still exist
+            const completedCount = habits.filter(h => todayCompleted[h.id]).length;
 
             document.getElementById('todayProgress').textContent = `${completedCount}/${habits.length}`;
             document.getElementById('currentStreak').textContent = getMaxStreak();
