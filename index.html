@@ -25,6 +25,58 @@
             --streak-end: #BF5AF2;
             --border: #2a2a2a;
             --danger: #FF3B30;
+            --modal-overlay-bg: rgba(0, 0, 0, 0.85);
+            --card-shadow: none;
+        }
+
+        /* Light Theme */
+        html[data-theme="light"] {
+            --bg-primary: #ffffff;
+            --bg-secondary: #f2f2f7;
+            --bg-card: #ffffff;
+            --bg-card-hover: #ebebf0;
+            --text-primary: #1c1c1e;
+            --text-secondary: #636366;
+            --text-muted: #aeaeb2;
+            --accent: #007AFF;
+            --accent-glow: rgba(0, 122, 255, 0.12);
+            --success: #34C759;
+            --success-glow: rgba(52, 199, 89, 0.10);
+            --streak-start: #5E5CE6;
+            --streak-end: #BF5AF2;
+            --border: #d1d1d6;
+            --danger: #FF3B30;
+            --modal-overlay-bg: rgba(0, 0, 0, 0.4);
+            --card-shadow: 0 0.5px 2px rgba(0, 0, 0, 0.06), 0 0 0 0.5px rgba(0, 0, 0, 0.04);
+        }
+
+        /* Warm Theme — Claude / e-reader inspired */
+        html[data-theme="warm"] {
+            --bg-primary: #FAF6F0;
+            --bg-secondary: #F0EBE1;
+            --bg-card: #FFFDF9;
+            --bg-card-hover: #F0EBE1;
+            --text-primary: #2D2B27;
+            --text-secondary: #6E6B62;
+            --text-muted: #A39E94;
+            --accent: #C07D4F;
+            --accent-glow: rgba(192, 125, 79, 0.15);
+            --success: #6B9E52;
+            --success-glow: rgba(107, 158, 82, 0.12);
+            --streak-start: #8B6E4E;
+            --streak-end: #C2956B;
+            --border: #E0D7CB;
+            --danger: #C44536;
+            --modal-overlay-bg: rgba(45, 43, 39, 0.5);
+            --card-shadow: 0 0.5px 2px rgba(60, 50, 38, 0.08);
+        }
+
+        /* Smooth theme transition */
+        html.theme-transition,
+        html.theme-transition *,
+        html.theme-transition *::before,
+        html.theme-transition *::after {
+            transition: background-color 0.35s ease, color 0.35s ease, border-color 0.35s ease, box-shadow 0.35s ease, outline-color 0.35s ease !important;
         }
 
         * {
@@ -217,6 +269,7 @@
             cursor: pointer;
             transition: all 0.2s ease;
             position: relative;
+            box-shadow: var(--card-shadow);
         }
 
         .habit-card:active {
@@ -224,7 +277,7 @@
         }
 
         .habit-card.completed {
-            background: rgba(52, 199, 89, 0.1);
+            background: var(--success-glow);
         }
 
         .habit-checkbox {
@@ -361,7 +414,7 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0, 0, 0, 0.85);
+            background: var(--modal-overlay-bg);
             backdrop-filter: blur(10px);
             display: flex;
             align-items: flex-end;
@@ -715,11 +768,95 @@
         .reminder-status.active {
             color: var(--success);
         }
+
+        /* Theme Switcher */
+        .theme-switcher {
+            position: absolute;
+            top: 24px;
+            left: 16px;
+            display: flex;
+            gap: 6px;
+            z-index: 10;
+        }
+
+        .theme-dot {
+            width: 26px;
+            height: 26px;
+            border-radius: 50%;
+            border: none;
+            cursor: pointer;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: none;
+            outline: 2px solid transparent;
+            outline-offset: 2px;
+            transition: transform 0.2s ease, outline-color 0.2s ease;
+        }
+
+        .theme-dot:active {
+            transform: scale(0.88);
+        }
+
+        .theme-dot-inner {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+        }
+
+        .theme-dot.dark .theme-dot-inner {
+            background: #1a1a1a;
+            box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+        }
+
+        .theme-dot.light .theme-dot-inner {
+            background: #f0f0f5;
+            box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.10);
+        }
+
+        .theme-dot.warm .theme-dot-inner {
+            background: #F0EBE1;
+            box-shadow: inset 0 0 0 1px rgba(139, 110, 78, 0.18);
+        }
+
+        .theme-dot.active {
+            outline-color: var(--accent);
+        }
+
+        /* Glass-inspired subtle effects for light/warm themes */
+        html[data-theme="light"] .stats-bar,
+        html[data-theme="light"] .week-view {
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+        }
+
+        html[data-theme="warm"] .stats-bar,
+        html[data-theme="warm"] .week-view {
+            box-shadow: 0 1px 4px rgba(60, 50, 38, 0.05);
+        }
     </style>
+    <script>
+        // Apply saved theme immediately to prevent flash of wrong theme
+        (function() {
+            var t = localStorage.getItem('silent_theme') || 'dark';
+            document.documentElement.setAttribute('data-theme', t);
+        })();
+    </script>
 </head>
 <body>
     <div class="celebration-container" id="celebrationContainer"></div>
     <div class="container">
+        <div class="theme-switcher">
+            <button class="theme-dot dark" data-theme="dark" title="Тёмная">
+                <span class="theme-dot-inner"></span>
+            </button>
+            <button class="theme-dot light" data-theme="light" title="Светлая">
+                <span class="theme-dot-inner"></span>
+            </button>
+            <button class="theme-dot warm" data-theme="warm" title="Тёплая">
+                <span class="theme-dot-inner"></span>
+            </button>
+        </div>
         <button class="reminder-btn" id="reminderBtn" title="Напоминания">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
@@ -805,6 +942,38 @@
             tg.ready();
             tg.expand();
         }
+
+        // ===============================
+        // Theme switching
+        // ===============================
+        function setTheme(theme) {
+            document.documentElement.classList.add('theme-transition');
+            document.documentElement.setAttribute('data-theme', theme);
+            localStorage.setItem('silent_theme', theme);
+
+            document.querySelectorAll('.theme-dot').forEach(function(dot) {
+                dot.classList.toggle('active', dot.dataset.theme === theme);
+            });
+
+            setTimeout(function() {
+                document.documentElement.classList.remove('theme-transition');
+            }, 400);
+
+            if (tg && tg.HapticFeedback) {
+                tg.HapticFeedback.impactOccurred('light');
+            }
+        }
+
+        // Initialize theme dots
+        (function() {
+            var currentTheme = localStorage.getItem('silent_theme') || 'dark';
+            document.querySelectorAll('.theme-dot').forEach(function(dot) {
+                dot.classList.toggle('active', dot.dataset.theme === currentTheme);
+                dot.addEventListener('click', function() {
+                    setTheme(dot.dataset.theme);
+                });
+            });
+        })();
 
         // Data - 3 примера привычек, все можно удалить
         const DEFAULT_HABITS = [
