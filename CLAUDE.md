@@ -24,11 +24,11 @@ silent-habit-tracker/
 
 ## Расположение файлов
 
-**ВАЖНО:** Проект существует в двух копиях на компьютере:
-- `C:\Users\lidgi_1kxoeqc\silent-habit-tracker\` — основная (привязана к GitHub)
-- `d:\Даня\Claude Code project\silent-habit-tracker\` — рабочая копия
+**ВАЖНО:** Основная рабочая копия — на D:\.
+- `d:\Даня\Claude Code project\silent-habit-tracker\` — **основная** (привязана к GitHub)
+- `C:\Users\lidgi_1kxoeqc\silent-habit-tracker\` — устаревшая копия (не использовать)
 
-При работе редактировать файлы на **D:\**, затем синхронизировать с GitHub-репозиторием.
+Все изменения делать на **D:\** и пушить отсюда.
 
 ## GitHub
 
@@ -175,6 +175,6 @@ WEBAPP_URL=https://push-andy-paragraphs-attachment.trycloudflare.com
 - [ ] Задеплоить на Render (Starter plan)
 - [ ] Обновить WEBAPP_URL на URL Render
 - [ ] Обновить Menu Button URL в @BotFather
-- [ ] Закоммитить и запушить изменения с темами на GitHub
+- [x] Закоммитить и запушить изменения с темами на GitHub
 - [ ] Сделать persistent database (для production)
 - [ ] Рассмотреть Liquid Glass эффекты (backdrop-filter: blur) — требует фоновый контент для видимого эффекта
