@@ -1013,7 +1013,7 @@
                 const today = getTodayKey();
                 if (!completedToday[today]) {
                     updateStreaks();
-                    completedToday = { [today]: {} };
+                    completedToday[today] = {};
                 }
             } else {
                 completedToday = { [getTodayKey()]: {} };
