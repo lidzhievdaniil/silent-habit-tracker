@@ -216,6 +216,18 @@
             color: var(--success);
         }
 
+        .week-day-circle.today.completed {
+            background: var(--success);
+            box-shadow: 0 0 0 2px var(--accent);
+            color: white;
+        }
+
+        .week-day-circle.today.partial {
+            background: var(--accent);
+            border: 2px solid var(--success);
+            color: white;
+        }
+
         /* Date */
         .date-section {
             margin-bottom: 20px;
@@ -644,7 +656,7 @@
             width: 80px;
             padding: 16px;
             background: var(--bg-card);
-            border: none;
+            border: 1.5px solid var(--border);
             border-radius: 12px;
             color: var(--text-primary);
             font-size: 32px;
@@ -653,6 +665,14 @@
             text-align: center;
             outline: none;
             -moz-appearance: textfield;
+        }
+
+        .time-picker-hint {
+            text-align: center;
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: -16px;
+            margin-bottom: 24px;
         }
 
         .time-input::-webkit-outer-spin-button,
@@ -923,6 +943,7 @@
                 <span class="time-separator">:</span>
                 <input type="number" class="time-input" id="reminderMinute" min="0" max="59" value="00" placeholder="00">
             </div>
+            <div class="time-picker-hint">по московскому времени (МСК)</div>
             <div class="reminder-toggle">
                 <span class="reminder-toggle-label">Включить напоминания</span>
                 <div class="toggle-switch" id="reminderToggle"></div>
@@ -1038,14 +1059,21 @@
             renderAll();
         }
 
+        function toLocalDateKey(d) {
+            const year = d.getFullYear();
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        }
+
         function getDateBefore(days) {
             const d = new Date();
             d.setDate(d.getDate() - days);
-            return d.toISOString().split('T')[0];
+            return toLocalDateKey(d);
         }
 
         function getTodayKey() {
-            return new Date().toISOString().split('T')[0];
+            return toLocalDateKey(new Date());
         }
 
         function updateStreaks() {
@@ -1056,7 +1084,7 @@
                 checkDate.setDate(checkDate.getDate() - 1);
 
                 while (true) {
-                    const dateKey = checkDate.toISOString().split('T')[0];
+                    const dateKey = toLocalDateKey(checkDate);
                     if (completedToday[dateKey]?.[habit.id]) {
                         streak++;
                         checkDate.setDate(checkDate.getDate() - 1);
@@ -1095,7 +1123,7 @@
             for (let i = 6; i >= 0; i--) {
                 const date = new Date(today);
                 date.setDate(date.getDate() - i);
-                const dateKey = date.toISOString().split('T')[0];
+                const dateKey = toLocalDateKey(date);
                 const dayNum = date.getDate();
                 const dayName = dayNames[date.getDay()];
                 const isToday = i === 0;
@@ -1105,9 +1133,10 @@
                 const totalHabits = habits.length;
 
                 let circleClass = 'week-day-circle';
-                if (isToday && completedCount === 0) {
+                if (isToday) {
                     circleClass += ' today';
-                } else if (completedCount === totalHabits && totalHabits > 0) {
+                }
+                if (completedCount === totalHabits && totalHabits > 0) {
                     circleClass += ' completed';
                 } else if (completedCount > 0) {
                     circleClass += ' partial';
@@ -1360,6 +1389,19 @@
         }
 
         async function deleteHabit(id) {
+            const habit = habits.find(h => h.id === id);
+            const habitName = habit ? habit.name : 'эту привычку';
+
+            const confirmed = await new Promise(resolve => {
+                if (tg?.showConfirm) {
+                    tg.showConfirm(`Удалить «${habitName}»?`, resolve);
+                } else {
+                    resolve(confirm(`Удалить «${habitName}»?`));
+                }
+            });
+
+            if (!confirmed) return;
+
             if (tg?.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
 
             // Optimistic update
