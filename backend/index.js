@@ -196,13 +196,24 @@ app.get('/health', (req, res) => {
 
 // ── Start ────────────────────────────────────────────────
 
+function startBotWithRetry(bot, attempt = 1) {
+    bot.start().catch(err => {
+        if (err.error_code === 409 && attempt <= 5) {
+            console.log(`Bot conflict (409), retry ${attempt}/5 in 10s...`);
+            setTimeout(() => startBotWithRetry(bot, attempt + 1), 10000);
+        } else {
+            console.error('Bot polling error:', err.message);
+        }
+    });
+}
+
 async function start() {
     try {
         await initDb();
 
         if (BOT_TOKEN && BOT_TOKEN !== 'test_token_12345') {
             const bot = createBot(BOT_TOKEN, WEBAPP_URL);
-            bot.start();
+            startBotWithRetry(bot);
             console.log('Telegram bot started');
             startScheduler(WEBAPP_URL);
         } else {
