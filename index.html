@@ -991,6 +991,11 @@
         let completedToday = {};
         let selectedEmoji = '💪';
 
+        // Normalize habit from server (id as number, emoji → icon)
+        function normalizeHabit(h) {
+            return { ...h, id: Number(h.id), icon: h.emoji || h.icon || '⭐', streak: 0 };
+        }
+
         // Load all data from server
         async function loadAppData() {
             const initData = getInitData();
@@ -1010,14 +1015,14 @@
                     })
                 ]);
 
-                habits = habitsResp.ok ? await habitsResp.json() : [];
-                habits.forEach(h => { h.streak = 0; });
+                const rawHabits = habitsResp.ok ? await habitsResp.json() : [];
+                habits = rawHabits.map(normalizeHabit);
 
                 const completionsList = completionsResp.ok ? await completionsResp.json() : [];
                 completedToday = {};
                 completionsList.forEach(c => {
                     if (!completedToday[c.completed_date]) completedToday[c.completed_date] = {};
-                    completedToday[c.completed_date][c.habit_id] = true;
+                    completedToday[c.completed_date][Number(c.habit_id)] = true;
                 });
 
                 const today = getTodayKey();
@@ -1441,8 +1446,7 @@
                         body: JSON.stringify({ name, emoji: selectedEmoji })
                     });
                     if (response.ok) {
-                        const newHabit = await response.json();
-                        newHabit.streak = 0;
+                        const newHabit = normalizeHabit(await response.json());
                         habits.push(newHabit);
                     }
                 } catch (error) {
