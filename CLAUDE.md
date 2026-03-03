@@ -4,8 +4,10 @@ Telegram Mini App для трекинга привычек с ежедневны
 
 ## Технологии
 
-**Frontend:** Чистый HTML/CSS/JS (index.html, ~1593 строки)
-**Backend:** Node.js + Express + grammy (Telegram Bot) + sql.js (SQLite)
+**Frontend:** Чистый HTML/CSS/JS (index.html)
+**Backend:** Node.js + Express + grammy (Telegram Bot) + pg (PostgreSQL)
+**База данных:** PostgreSQL на Supabase (free tier)
+**Хостинг:** Render Starter ($7/мес)
 
 ## Структура проекта
 
@@ -14,11 +16,11 @@ silent-habit-tracker/
 ├── index.html          # Frontend (Mini App) — весь UI в одном файле
 ├── CLAUDE.md           # Этот файл
 └── backend/
-    ├── index.js        # Express сервер + API + раздача статики
+    ├── index.js        # Express сервер + все API endpoints
     ├── bot.js          # Telegram Bot (grammy)
     ├── scheduler.js    # Cron-задача для напоминаний (каждую минуту)
-    ├── db.js           # SQLite база данных (sql.js)
-    ├── .env            # Конфигурация (BOT_TOKEN, WEBAPP_URL)
+    ├── db.js           # PostgreSQL (pg) — habits, completions, reminders
+    ├── .env            # Конфигурация (BOT_TOKEN, WEBAPP_URL, DATABASE_URL)
     └── package.json
 ```
 
@@ -37,33 +39,83 @@ silent-habit-tracker/
 
 ## Конфигурация
 
-**backend/.env:**
+**backend/.env (локально) / Render Environment Variables:**
 ```
 BOT_TOKEN=<токен от @BotFather>
-WEBAPP_URL=<публичный HTTPS URL сервиса на Render>
+WEBAPP_URL=<URL сервиса на Render>
+DATABASE_URL=<Supabase Transaction Pooler connection string>
 PORT=3000
 ```
 
+**Supabase:**
+- Project ID: `ogynpxsxcadpxmyahthh`
+- Подключение через Transaction Pooler (порт 6543) — IPv4, работает с Render
+- URL формат: `postgresql://postgres.ogynpxsxcadpxmyahthh:ПАРОЛЬ@aws-0-....pooler.supabase.com:6543/postgres`
+
+## База данных — схема
+
+```sql
+CREATE TABLE habits (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    name TEXT NOT NULL,
+    emoji TEXT NOT NULL,
+    position INTEGER DEFAULT 0,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE completions (
+    user_id BIGINT NOT NULL,
+    habit_id BIGINT NOT NULL REFERENCES habits(id) ON DELETE CASCADE,
+    completed_date DATE NOT NULL,
+    PRIMARY KEY (user_id, habit_id, completed_date)
+);
+
+CREATE TABLE reminders (
+    user_id BIGINT PRIMARY KEY,
+    reminder_time TEXT NOT NULL,
+    timezone TEXT DEFAULT 'Europe/Moscow',
+    enabled BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+Таблицы создаются автоматически при старте сервера (`initDb()`).
+
 ## API Endpoints
 
-- `GET /health` — проверка работоспособности
-- `GET /api/reminder` — получить настройки напоминания (требует auth)
-- `POST /api/reminder` — сохранить напоминание `{reminder_time: "HH:MM"}` (требует auth)
-- `DELETE /api/reminder` — удалить напоминание (требует auth)
+Все endpoints (кроме /health) требуют заголовок `X-Telegram-Init-Data`.
 
-Аутентификация: заголовок `X-Telegram-Init-Data` с initData от Telegram WebApp.
+**Привычки:**
+- `GET /api/habits` — список привычек пользователя
+- `POST /api/habits` — создать привычку `{name, emoji}`
+- `DELETE /api/habits/:id` — удалить привычку (cascade на completions)
+
+**Выполнение:**
+- `GET /api/completions?from=YYYY-MM-DD&to=YYYY-MM-DD` — история выполнения
+- `POST /api/completions` — отметить/снять `{habit_id, date, completed}`
+
+**Напоминания:**
+- `GET /api/reminder` — настройки напоминания
+- `POST /api/reminder` — сохранить `{reminder_time: "HH:MM"}`
+- `DELETE /api/reminder` — удалить напоминание
+
+**Служебное:**
+- `GET /health` — проверка работоспособности
 
 ## Telegram Bot
 
 - **Username:** @SilentHabitBot
 - **User ID владельца:** 609511513
 - Команды: `/start`, `/help`
+- При 409 Conflict (деплой) — автоматический retry до 5 раз с интервалом 10s
 
 ## Функциональность frontend (index.html)
 
 ### Основные функции
 - Добавление/удаление привычек с эмодзи-иконками (32 эмодзи)
-- Отметка выполнения привычек с анимацией и фейерверками
+- Отметка выполнения с анимацией и фейерверками (оптимистичный UI)
 - Недельный обзор с кружками дней (выполнено/частично/сегодня)
 - Статистика: прогресс за день, максимальный стрик
 - Настройка напоминаний (время, вкл/выкл)
@@ -71,12 +123,21 @@ PORT=3000
 - Русский интерфейс, дата на русском
 
 ### Хранение данных
-- **Привычки:** `localStorage` ключ `silent_habits`
-- **Выполнение:** `localStorage` ключ `silent_completed`
-- **Тема:** `localStorage` ключ `silent_theme`
-- **Напоминания:** SQLite на сервере (backend/db.js)
+- **Привычки:** PostgreSQL на сервере (sync при каждом действии)
+- **Выполнение:** PostgreSQL на сервере (последние 30 дней загружаются при старте)
+- **Тема:** `localStorage` ключ `silent_theme` (только визуальная настройка)
+- **Напоминания:** PostgreSQL на сервере
 
-### Система тем (ДОБАВЛЕНО)
+### Архитектура загрузки данных
+При открытии приложения:
+1. Показывается "Загрузка..."
+2. Параллельно: `GET /api/habits` + `GET /api/completions?from=30_дней_назад&to=сегодня`
+3. Данные нормализуются: `id` → Number, `emoji` → `icon`
+4. Рендер всего UI
+
+Все действия (добавить/удалить привычку, отметить выполнение) — **оптимистичный UI**: интерфейс обновляется мгновенно, запрос на сервер идёт в фоне.
+
+### Система тем
 
 Реализовано 3 цветовые темы с плавным переключением:
 
@@ -86,95 +147,40 @@ PORT=3000
 | **Light** | `light` | `#ffffff` | `#1c1c1e` | iOS Blue `#007AFF` |
 | **Warm** (Claude/e-reader) | `warm` | `#FAF6F0` | `#2D2B27` | Amber `#C07D4F` |
 
-**Как работает:**
-- CSS переменные на `html[data-theme="..."]` — переопределяются все 14+ цветовых переменных
-- Inline скрипт в `<head>` читает `localStorage('silent_theme')` и ставит `data-theme` на `<html>` до рендера (предотвращает мигание)
-- Функция `setTheme(theme)` переключает тему с плавной анимацией (350мс через класс `.theme-transition`)
-- Haptic feedback при переключении
+- CSS переменные на `html[data-theme="..."]`
+- Inline скрипт в `<head>` читает localStorage до рендера (нет мигания)
+- 3 точки (`.theme-dot`) в левом верхнем углу
 
-**UI переключения:**
-- 3 круглые точки (`.theme-dot`) в левом верхнем углу контейнера
-- Зеркально кнопке напоминаний (колокольчик) в правом верхнем углу
-- Каждая точка окрашена в цвет своей темы
-- Активная тема обведена кольцом акцентного цвета (`outline`)
+## Хостинг
 
-**CSS переменные каждой темы:**
-```
---bg-primary, --bg-secondary, --bg-card, --bg-card-hover
---text-primary, --text-secondary, --text-muted
---accent, --accent-glow
---success, --success-glow
---streak-start, --streak-end
---border, --danger
---modal-overlay-bg, --card-shadow
-```
+### Статус: РАБОТАЕТ ✅
 
-**Дополнительные эффекты:**
-- `--card-shadow` — тени карточек в светлых темах (в dark = none)
-- `--modal-overlay-bg` — адаптивная прозрачность оверлея модальных окон
-- Glass-inspired box-shadow на `.stats-bar` и `.week-view` в light/warm темах
-- Класс `html.theme-transition` включает transition на все элементы только при клике (не при загрузке)
-
-## Хостинг — ТЕКУЩАЯ ПРОБЛЕМА
-
-### Статус: НЕ РАБОТАЕТ
-
-**Причина:** В `backend/.env` указан мертвый URL Cloudflare quick tunnel:
-```
-WEBAPP_URL=https://push-andy-paragraphs-attachment.trycloudflare.com
-```
-Это временный URL от `cloudflared tunnel --url http://localhost:3000`. Он живет только пока процесс cloudflared запущен. Сейчас туннель не запущен — URL мертв — Mini App не открывается в Telegram.
-
-### Что нужно сделать для запуска
-
-**Рекомендуемый вариант — Render Starter ($7/мес):**
-
-1. Зайти на https://dashboard.render.com
-2. New → Web Service → подключить репозиторий `lidzhievdaniil/silent-habit-tracker`
-3. Настройки:
-   - **Name:** silent-habit-tracker
-   - **Region:** Frankfurt (EU) или Oregon (US)
-   - **Branch:** main
-   - **Root Directory:** (оставить пустым)
-   - **Runtime:** Node
-   - **Build Command:** `cd backend && npm install`
-   - **Start Command:** `cd backend && node index.js`
-   - **Plan:** Starter ($7/мес) — НЕ Free (Free засыпает через 15 мин)
-4. Environment Variables:
-   - `BOT_TOKEN` = токен бота из @BotFather
-   - `WEBAPP_URL` = URL сервиса на Render (например `https://silent-habit-tracker.onrender.com`)
-   - `PORT` = `3000`
-5. Deploy
-6. После деплоя обновить в @BotFather → Bot Settings → Menu Button URL → URL Render сервиса
-7. Обновить `backend/.env` локально: `WEBAPP_URL=https://silent-habit-tracker.onrender.com`
-
-**Альтернативы:**
-- Hetzner/DigitalOcean VPS (~$4-6/мес) — нужна настройка nginx, pm2, SSL
-- Railway ($5/мес + usage) — простой деплой, но непредсказуемые счета
-- Free Render + keep-alive пинги — ненадежно, Render блокирует
+- **Render Starter** ($7/мес) — сервер не засыпает
+- **Supabase** (free) — PostgreSQL база данных
+- Автодеплой при пуше в `main` ветку GitHub
 
 ### Для локального тестирования
 
 1. `cd backend && npm install && node index.js`
 2. `cloudflared tunnel --url http://localhost:3000`
 3. Обновить WEBAPP_URL в .env на новый URL туннеля
-4. Или просто открыть index.html в браузере (без Telegram API)
+4. Или просто открыть index.html в браузере (без Telegram API — данные не сохранятся)
 
 ## Архитектура
 
 - Frontend раздается через backend (`express.static` из корня проекта)
-- `API_URL` в index.html пустой строкой (same origin)
+- `API_URL` в index.html — пустая строка (same origin)
 - Backend валидирует Telegram initData через HMAC-SHA256
 - Scheduler (node-cron) проверяет напоминания каждую минуту
 - Часовой пояс по умолчанию: Europe/Moscow
-- База sql.js — данные в памяти + файл reminders.db
+- `pg.Pool` — connection pooling к Supabase
 
 ## TODO
 
 - [x] Добавить систему тем (dark/light/warm)
-- [ ] Задеплоить на Render (Starter plan)
-- [ ] Обновить WEBAPP_URL на URL Render
-- [ ] Обновить Menu Button URL в @BotFather
-- [x] Закоммитить и запушить изменения с темами на GitHub
-- [x] Сделать persistent database (better-sqlite3 + Render Persistent Disk)
-- [ ] Рассмотреть Liquid Glass эффекты (backdrop-filter: blur) — требует фоновый контент для видимого эффекта
+- [x] Задеплоить на Render (Starter plan)
+- [x] Перенести все данные пользователя на сервер (PostgreSQL/Supabase)
+- [x] Исправить 409 Conflict при деплое бота
+- [ ] Добавить PostHog аналитику (DAU, воронка, retention)
+- [ ] Улучшить UI/UX перед публичным запуском
+- [ ] Рассмотреть Liquid Glass эффекты (backdrop-filter: blur)
