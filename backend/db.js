@@ -1,125 +1,153 @@
-const initSqlJs = require('sql.js');
-const fs = require('fs');
-const path = require('path');
+const { Pool } = require('pg');
 
-const dbPath = path.join(__dirname, 'reminders.db');
+const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false
+});
 
-let db = null;
-
-// Initialize database
+// Initialize database — create tables if not exist
 async function initDb() {
-    const SQL = await initSqlJs();
-
-    // Load existing database or create new one
-    if (fs.existsSync(dbPath)) {
-        const buffer = fs.readFileSync(dbPath);
-        db = new SQL.Database(buffer);
-    } else {
-        db = new SQL.Database();
-    }
-
-    // Create reminders table
-    db.run(`
-        CREATE TABLE IF NOT EXISTS reminders (
-            user_id INTEGER PRIMARY KEY,
-            reminder_time TEXT NOT NULL,
-            timezone TEXT DEFAULT 'Europe/Moscow',
-            enabled INTEGER DEFAULT 1,
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS habits (
+            id BIGSERIAL PRIMARY KEY,
+            user_id BIGINT NOT NULL,
+            name TEXT NOT NULL,
+            emoji TEXT NOT NULL,
+            position INTEGER NOT NULL DEFAULT 0,
+            created_at TIMESTAMPTZ DEFAULT NOW()
         )
     `);
 
-    saveDb();
-    return db;
+    await pool.query(`
+        CREATE INDEX IF NOT EXISTS habits_user_idx ON habits(user_id)
+    `);
+
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS completions (
+            user_id BIGINT NOT NULL,
+            habit_id BIGINT NOT NULL REFERENCES habits(id) ON DELETE CASCADE,
+            completed_date DATE NOT NULL,
+            PRIMARY KEY (user_id, habit_id, completed_date)
+        )
+    `);
+
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS reminders (
+            user_id BIGINT PRIMARY KEY,
+            reminder_time TEXT NOT NULL,
+            timezone TEXT DEFAULT 'Europe/Moscow',
+            enabled BOOLEAN DEFAULT TRUE,
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            updated_at TIMESTAMPTZ DEFAULT NOW()
+        )
+    `);
+
+    console.log('Database initialized');
 }
 
-// Save database to file
-function saveDb() {
-    if (db) {
-        const data = db.export();
-        const buffer = Buffer.from(data);
-        fs.writeFileSync(dbPath, buffer);
-    }
+// ── Habits ──────────────────────────────────────────────
+
+async function getHabits(userId) {
+    const result = await pool.query(
+        'SELECT id, name, emoji FROM habits WHERE user_id = $1 ORDER BY position, created_at',
+        [userId]
+    );
+    return result.rows;
 }
 
-// Get reminder for user
-function getReminder(userId) {
-    if (!db) return null;
-    const stmt = db.prepare('SELECT * FROM reminders WHERE user_id = ?');
-    stmt.bind([userId]);
-    if (stmt.step()) {
-        const row = stmt.getAsObject();
-        stmt.free();
-        return row;
-    }
-    stmt.free();
-    return null;
+async function addHabit(userId, name, emoji) {
+    const result = await pool.query(
+        'INSERT INTO habits (user_id, name, emoji) VALUES ($1, $2, $3) RETURNING id, name, emoji',
+        [userId, name, emoji]
+    );
+    return result.rows[0];
 }
 
-// Save or update reminder
-function saveReminder(userId, reminderTime, timezone = 'Europe/Moscow') {
-    if (!db) return;
+async function deleteHabit(userId, habitId) {
+    await pool.query(
+        'DELETE FROM habits WHERE id = $1 AND user_id = $2',
+        [habitId, userId]
+    );
+}
 
-    // Check if exists
-    const existing = getReminder(userId);
+// ── Completions ─────────────────────────────────────────
 
-    if (existing) {
-        db.run(
-            'UPDATE reminders SET reminder_time = ?, timezone = ?, enabled = 1, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?',
-            [reminderTime, timezone, userId]
+async function getCompletions(userId, from, to) {
+    const result = await pool.query(
+        `SELECT habit_id, TO_CHAR(completed_date, 'YYYY-MM-DD') AS completed_date
+         FROM completions
+         WHERE user_id = $1 AND completed_date BETWEEN $2 AND $3`,
+        [userId, from, to]
+    );
+    return result.rows;
+}
+
+async function toggleCompletion(userId, habitId, date, completed) {
+    if (completed) {
+        await pool.query(
+            `INSERT INTO completions (user_id, habit_id, completed_date)
+             VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+            [userId, habitId, date]
         );
     } else {
-        db.run(
-            'INSERT INTO reminders (user_id, reminder_time, timezone, enabled) VALUES (?, ?, ?, 1)',
-            [userId, reminderTime, timezone]
+        await pool.query(
+            'DELETE FROM completions WHERE user_id = $1 AND habit_id = $2 AND completed_date = $3',
+            [userId, habitId, date]
         );
     }
-
-    saveDb();
 }
 
-// Disable reminder
-function disableReminder(userId) {
-    if (!db) return;
-    db.run('UPDATE reminders SET enabled = 0, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?', [userId]);
-    saveDb();
+// ── Reminders ───────────────────────────────────────────
+
+async function getReminder(userId) {
+    const result = await pool.query(
+        'SELECT * FROM reminders WHERE user_id = $1',
+        [userId]
+    );
+    return result.rows[0] || null;
 }
 
-// Delete reminder
-function deleteReminder(userId) {
-    if (!db) return;
-    db.run('DELETE FROM reminders WHERE user_id = ?', [userId]);
-    saveDb();
+async function saveReminder(userId, reminderTime, timezone = 'Europe/Moscow') {
+    await pool.query(
+        `INSERT INTO reminders (user_id, reminder_time, timezone, enabled)
+         VALUES ($1, $2, $3, TRUE)
+         ON CONFLICT (user_id) DO UPDATE
+         SET reminder_time = $2, timezone = $3, enabled = TRUE, updated_at = NOW()`,
+        [userId, reminderTime, timezone]
+    );
 }
 
-// Get all enabled reminders for specific time (HH:MM format)
-function getRemindersForTime(time) {
-    if (!db) return [];
-    const results = [];
-    const stmt = db.prepare('SELECT * FROM reminders WHERE reminder_time = ? AND enabled = 1');
-    stmt.bind([time]);
-    while (stmt.step()) {
-        results.push(stmt.getAsObject());
-    }
-    stmt.free();
-    return results;
+async function disableReminder(userId) {
+    await pool.query(
+        'UPDATE reminders SET enabled = FALSE, updated_at = NOW() WHERE user_id = $1',
+        [userId]
+    );
 }
 
-// Get all enabled reminders
-function getAllEnabledReminders() {
-    if (!db) return [];
-    const results = [];
-    const stmt = db.prepare('SELECT * FROM reminders WHERE enabled = 1');
-    while (stmt.step()) {
-        results.push(stmt.getAsObject());
-    }
-    stmt.free();
-    return results;
+async function deleteReminder(userId) {
+    await pool.query('DELETE FROM reminders WHERE user_id = $1', [userId]);
+}
+
+async function getRemindersForTime(time) {
+    const result = await pool.query(
+        'SELECT * FROM reminders WHERE reminder_time = $1 AND enabled = TRUE',
+        [time]
+    );
+    return result.rows;
+}
+
+async function getAllEnabledReminders() {
+    const result = await pool.query('SELECT * FROM reminders WHERE enabled = TRUE');
+    return result.rows;
 }
 
 module.exports = {
     initDb,
+    getHabits,
+    addHabit,
+    deleteHabit,
+    getCompletions,
+    toggleCompletion,
     getReminder,
     saveReminder,
     disableReminder,

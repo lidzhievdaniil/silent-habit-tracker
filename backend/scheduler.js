@@ -31,7 +31,7 @@ function startScheduler(webAppUrl) {
     // Run every minute
     schedulerTask = cron.schedule('* * * * *', async () => {
         try {
-            const reminders = getAllEnabledReminders();
+            const reminders = await getAllEnabledReminders();
 
             for (const reminder of reminders) {
                 const currentTime = getCurrentTimeInTimezone(reminder.timezone);

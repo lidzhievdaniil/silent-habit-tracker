@@ -176,5 +176,5 @@ WEBAPP_URL=https://push-andy-paragraphs-attachment.trycloudflare.com
 - [ ] Обновить WEBAPP_URL на URL Render
 - [ ] Обновить Menu Button URL в @BotFather
 - [x] Закоммитить и запушить изменения с темами на GitHub
-- [ ] Сделать persistent database (для production)
+- [x] Сделать persistent database (better-sqlite3 + Render Persistent Disk)
 - [ ] Рассмотреть Liquid Glass эффекты (backdrop-filter: blur) — требует фоновый контент для видимого эффекта

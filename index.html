@@ -975,12 +975,8 @@
             });
         })();
 
-        // Data - 3 примера привычек, все можно удалить
-        const DEFAULT_HABITS = [
-            { id: 1, name: 'Спорт', icon: '💪', streak: 0, isExample: true },
-            { id: 2, name: 'Чтение', icon: '📚', streak: 0, isExample: true },
-            { id: 3, name: 'Медитация', icon: '🧘', streak: 0, isExample: true }
-        ];
+        // API URL - empty string means same origin (frontend served from backend)
+        const API_URL = '';
 
         // Расширенный набор эмодзи
         const EMOJIS = [
@@ -994,35 +990,53 @@
         let habits = [];
         let completedToday = {};
         let selectedEmoji = '💪';
-        let isFirstLaunch = false;
 
-        // Load data from localStorage
-        function loadData() {
-            const savedHabits = localStorage.getItem('silent_habits');
-            const savedCompleted = localStorage.getItem('silent_completed');
-
-            if (savedHabits) {
-                habits = JSON.parse(savedHabits);
-            } else {
-                habits = [...DEFAULT_HABITS];
-                isFirstLaunch = true;
+        // Load all data from server
+        async function loadAppData() {
+            const initData = getInitData();
+            if (!initData) {
+                completedToday = { [getTodayKey()]: {} };
+                renderAll();
+                return;
             }
 
-            if (savedCompleted) {
-                completedToday = JSON.parse(savedCompleted);
+            try {
+                const [habitsResp, completionsResp] = await Promise.all([
+                    fetch(`${API_URL}/api/habits`, {
+                        headers: { 'X-Telegram-Init-Data': initData }
+                    }),
+                    fetch(`${API_URL}/api/completions?from=${getDateBefore(30)}&to=${getTodayKey()}`, {
+                        headers: { 'X-Telegram-Init-Data': initData }
+                    })
+                ]);
+
+                habits = habitsResp.ok ? await habitsResp.json() : [];
+                habits.forEach(h => { h.streak = 0; });
+
+                const completionsList = completionsResp.ok ? await completionsResp.json() : [];
+                completedToday = {};
+                completionsList.forEach(c => {
+                    if (!completedToday[c.completed_date]) completedToday[c.completed_date] = {};
+                    completedToday[c.completed_date][c.habit_id] = true;
+                });
+
                 const today = getTodayKey();
-                if (!completedToday[today]) {
-                    updateStreaks();
-                    completedToday[today] = {};
-                }
-            } else {
+                if (!completedToday[today]) completedToday[today] = {};
+
+                updateStreaks();
+            } catch (error) {
+                console.error('Failed to load data:', error);
+                habits = [];
                 completedToday = { [getTodayKey()]: {} };
             }
+
+            renderAll();
         }
 
-        function saveData() {
-            localStorage.setItem('silent_habits', JSON.stringify(habits));
-            localStorage.setItem('silent_completed', JSON.stringify(completedToday));
+        function getDateBefore(days) {
+            const d = new Date();
+            d.setDate(d.getDate() - days);
+            return d.toISOString().split('T')[0];
         }
 
         function getTodayKey() {
@@ -1115,13 +1129,15 @@
         }
 
         function renderExampleHint() {
-            const hasExamples = habits.some(h => h.isExample);
-            const hint = document.getElementById('exampleHint');
-            if (hasExamples && isFirstLaunch) {
-                hint.textContent = 'Примеры можно удалить';
-            } else {
-                hint.textContent = '';
-            }
+            document.getElementById('exampleHint').textContent = '';
+        }
+
+        function renderAll() {
+            renderDate();
+            renderWeekView();
+            renderStats();
+            renderHabits();
+            renderExampleHint();
         }
 
         function renderHabits() {
@@ -1291,54 +1307,77 @@
             }
         }
 
-        function toggleHabit(id) {
+        async function toggleHabit(id) {
             const today = getTodayKey();
-            if (!completedToday[today]) {
-                completedToday[today] = {};
-            }
+            if (!completedToday[today]) completedToday[today] = {};
 
             const wasCompleted = completedToday[today][id];
-            completedToday[today][id] = !completedToday[today][id];
+            const newCompleted = !wasCompleted;
+
+            // Optimistic update
+            completedToday[today][id] = newCompleted;
             updateStreaks();
 
-            if (tg?.HapticFeedback) {
-                tg.HapticFeedback.impactOccurred('light');
-            }
+            if (tg?.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
 
-            saveData();
             renderHabits();
             renderStats();
             renderWeekView();
 
-            const card = document.querySelector(`[data-id="${id}"]`);
-            if (completedToday[today][id] && !wasCompleted) {
-                card.classList.add('just-completed');
-                setTimeout(() => card.classList.remove('just-completed'), 300);
-
-                // Trigger celebration
+            if (newCompleted) {
+                const card = document.querySelector(`[data-id="${id}"]`);
+                card?.classList.add('just-completed');
+                setTimeout(() => card?.classList.remove('just-completed'), 300);
                 createCelebration();
+            }
+
+            const initData = getInitData();
+            if (initData) {
+                try {
+                    await fetch(`${API_URL}/api/completions`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-Telegram-Init-Data': initData
+                        },
+                        body: JSON.stringify({ habit_id: id, date: today, completed: newCompleted })
+                    });
+                } catch (error) {
+                    console.error('Failed to save completion:', error);
+                    // Revert on error
+                    completedToday[today][id] = wasCompleted;
+                    updateStreaks();
+                    renderHabits();
+                    renderStats();
+                    renderWeekView();
+                }
             }
         }
 
-        function deleteHabit(id) {
-            if (tg?.HapticFeedback) {
-                tg.HapticFeedback.impactOccurred('medium');
-            }
+        async function deleteHabit(id) {
+            if (tg?.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
 
+            // Optimistic update
             habits = habits.filter(h => h.id !== id);
-
-            // Remove completed progress for this habit
             Object.keys(completedToday).forEach(dateKey => {
-                if (completedToday[dateKey][id]) {
-                    delete completedToday[dateKey][id];
-                }
+                delete completedToday[dateKey][id];
             });
 
-            saveData();
             renderHabits();
             renderStats();
             renderWeekView();
-            renderExampleHint();
+
+            const initData = getInitData();
+            if (initData) {
+                try {
+                    await fetch(`${API_URL}/api/habits/${id}`, {
+                        method: 'DELETE',
+                        headers: { 'X-Telegram-Init-Data': initData }
+                    });
+                } catch (error) {
+                    console.error('Failed to delete habit:', error);
+                }
+            }
         }
 
         function renderEmojiPicker() {
@@ -1382,43 +1421,48 @@
             submitBtn.disabled = habitInput.value.trim().length === 0;
         });
 
-        submitBtn.addEventListener('click', () => {
+        submitBtn.addEventListener('click', async () => {
             const name = habitInput.value.trim();
-            if (name) {
-                const newHabit = {
-                    id: Date.now(),
-                    name: name,
-                    icon: selectedEmoji,
-                    streak: 0
-                };
-                habits.push(newHabit);
-                isFirstLaunch = false;
-                saveData();
-                renderHabits();
-                renderStats();
-                renderExampleHint();
-                modal.classList.remove('active');
+            if (!name) return;
 
-                if (tg?.HapticFeedback) {
-                    tg.HapticFeedback.notificationOccurred('success');
+            submitBtn.disabled = true;
+            modal.classList.remove('active');
+            if (tg?.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
+
+            const initData = getInitData();
+            if (initData) {
+                try {
+                    const response = await fetch(`${API_URL}/api/habits`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-Telegram-Init-Data': initData
+                        },
+                        body: JSON.stringify({ name, emoji: selectedEmoji })
+                    });
+                    if (response.ok) {
+                        const newHabit = await response.json();
+                        newHabit.streak = 0;
+                        habits.push(newHabit);
+                    }
+                } catch (error) {
+                    console.error('Failed to add habit:', error);
                 }
             }
+
+            renderHabits();
+            renderStats();
         });
 
         // Initialize
-        loadData();
         renderDate();
-        renderWeekView();
-        renderStats();
-        renderHabits();
-        renderExampleHint();
+        document.getElementById('habitsList').innerHTML =
+            '<div style="text-align:center;padding:32px 0;color:var(--text-muted)">Загрузка...</div>';
+        loadAppData();
 
         // ===============================
         // Reminder functionality
         // ===============================
-
-        // API URL - empty string means same origin (frontend served from backend)
-        const API_URL = '';
 
         // Reminder state
         let reminderEnabled = false;

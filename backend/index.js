@@ -5,7 +5,12 @@ const crypto = require('crypto');
 const path = require('path');
 const { createBot, getBot } = require('./bot');
 const { startScheduler } = require('./scheduler');
-const { initDb, getReminder, saveReminder, deleteReminder } = require('./db');
+const {
+    initDb,
+    getHabits, addHabit, deleteHabit,
+    getCompletions, toggleCompletion,
+    getReminder, saveReminder, deleteReminder
+} = require('./db');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -38,29 +43,23 @@ function validateInitData(initData) {
         const hash = urlParams.get('hash');
         urlParams.delete('hash');
 
-        // Sort parameters
         const params = Array.from(urlParams.entries())
             .sort(([a], [b]) => a.localeCompare(b))
             .map(([key, value]) => `${key}=${value}`)
             .join('\n');
 
-        // Create secret key
         const secretKey = crypto
             .createHmac('sha256', 'WebAppData')
             .update(BOT_TOKEN)
             .digest();
 
-        // Calculate hash
         const calculatedHash = crypto
             .createHmac('sha256', secretKey)
             .update(params)
             .digest('hex');
 
-        if (calculatedHash !== hash) {
-            return null;
-        }
+        if (calculatedHash !== hash) return null;
 
-        // Parse user data
         const userStr = urlParams.get('user');
         if (!userStr) return null;
 
@@ -84,15 +83,80 @@ function authMiddleware(req, res, next) {
     next();
 }
 
-// API Routes
+// ── Habits ──────────────────────────────────────────────
 
-// Get reminder settings
-app.get('/api/reminder', authMiddleware, (req, res) => {
+app.get('/api/habits', authMiddleware, async (req, res) => {
     try {
-        const reminder = getReminder(req.user.id);
+        const habits = await getHabits(req.user.id);
+        res.json(habits);
+    } catch (error) {
+        console.error('Get habits error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+app.post('/api/habits', authMiddleware, async (req, res) => {
+    try {
+        const { name, emoji } = req.body;
+        if (!name || !emoji) {
+            return res.status(400).json({ error: 'name and emoji are required' });
+        }
+        const habit = await addHabit(req.user.id, name.trim(), emoji);
+        res.json(habit);
+    } catch (error) {
+        console.error('Add habit error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+app.delete('/api/habits/:id', authMiddleware, async (req, res) => {
+    try {
+        await deleteHabit(req.user.id, parseInt(req.params.id));
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Delete habit error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ── Completions ─────────────────────────────────────────
+
+app.get('/api/completions', authMiddleware, async (req, res) => {
+    try {
+        const { from, to } = req.query;
+        if (!from || !to) {
+            return res.status(400).json({ error: 'from and to query params are required' });
+        }
+        const completions = await getCompletions(req.user.id, from, to);
+        res.json(completions);
+    } catch (error) {
+        console.error('Get completions error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+app.post('/api/completions', authMiddleware, async (req, res) => {
+    try {
+        const { habit_id, date, completed } = req.body;
+        if (!habit_id || !date || completed === undefined) {
+            return res.status(400).json({ error: 'habit_id, date and completed are required' });
+        }
+        await toggleCompletion(req.user.id, habit_id, date, completed);
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Toggle completion error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// ── Reminders ───────────────────────────────────────────
+
+app.get('/api/reminder', authMiddleware, async (req, res) => {
+    try {
+        const reminder = await getReminder(req.user.id);
         res.json({
             reminder_time: reminder?.reminder_time || null,
-            enabled: reminder?.enabled === 1 || false
+            enabled: reminder?.enabled === true || false
         });
     } catch (error) {
         console.error('Get reminder error:', error);
@@ -100,17 +164,13 @@ app.get('/api/reminder', authMiddleware, (req, res) => {
     }
 });
 
-// Save/update reminder
-app.post('/api/reminder', authMiddleware, (req, res) => {
+app.post('/api/reminder', authMiddleware, async (req, res) => {
     try {
         const { reminder_time } = req.body;
-
-        // Validate time format (HH:MM)
         if (!reminder_time || !/^([01]\d|2[0-3]):([0-5]\d)$/.test(reminder_time)) {
             return res.status(400).json({ error: 'Invalid time format. Use HH:MM' });
         }
-
-        saveReminder(req.user.id, reminder_time);
+        await saveReminder(req.user.id, reminder_time);
         res.json({ success: true, reminder_time });
     } catch (error) {
         console.error('Save reminder error:', error);
@@ -118,10 +178,9 @@ app.post('/api/reminder', authMiddleware, (req, res) => {
     }
 });
 
-// Delete reminder
-app.delete('/api/reminder', authMiddleware, (req, res) => {
+app.delete('/api/reminder', authMiddleware, async (req, res) => {
     try {
-        deleteReminder(req.user.id);
+        await deleteReminder(req.user.id);
         res.json({ success: true });
     } catch (error) {
         console.error('Delete reminder error:', error);
@@ -129,31 +188,27 @@ app.delete('/api/reminder', authMiddleware, (req, res) => {
     }
 });
 
-// Health check
+// ── Health ───────────────────────────────────────────────
+
 app.get('/health', (req, res) => {
     res.json({ status: 'ok' });
 });
 
-// Start server and bot
+// ── Start ────────────────────────────────────────────────
+
 async function start() {
     try {
-        // Initialize database
         await initDb();
-        console.log('Database initialized');
 
-        // Create and start bot (only if valid token)
         if (BOT_TOKEN && BOT_TOKEN !== 'test_token_12345') {
             const bot = createBot(BOT_TOKEN, WEBAPP_URL);
             bot.start();
             console.log('Telegram bot started');
-
-            // Start reminder scheduler
             startScheduler(WEBAPP_URL);
         } else {
             console.log('Bot not started (test mode)');
         }
 
-        // Start Express server
         app.listen(PORT, () => {
             console.log(`Server running on port ${PORT}`);
         });
