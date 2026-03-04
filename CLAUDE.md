@@ -237,9 +237,9 @@ PostgreSQL `DATE` тип — timezone-independent, серверная сторо
 - [x] Прокрутка времени в стиле iOS Clock в разделе напоминаний (CSS scroll snap drum picker)
 
 ### 🔴 Критично (безопасность) — до публичного запуска
-- [ ] **Включить Supabase RLS** — политики на таблицах habits/completions/reminders (защита от утечки DATABASE_URL)
-- [ ] **Rate limiting** — добавить `express-rate-limit` на API endpoints (защита от спама)
-- [ ] **Валидация входных данных на сервере** — ограничить длину name (макс 100 символов), проверять допустимые emoji
+- [x] **Включить Supabase RLS** — политики на таблицах habits/completions/reminders (защита от утечки DATABASE_URL)
+- [x] **Rate limiting** — добавить `express-rate-limit` на API endpoints (защита от спама)
+- [x] **Валидация входных данных на сервере** — ограничить длину name (макс 100 символов), проверять допустимые emoji
 - [ ] **Privacy Policy** — написать и разместить (152-ФЗ / GDPR), добавить ссылку в бота
 - [ ] **Аудит git-истории** — проверить что секреты никогда не попадали в репозиторий
 

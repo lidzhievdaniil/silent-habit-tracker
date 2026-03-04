@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const crypto = require('crypto');
 const path = require('path');
+const rateLimit = require('express-rate-limit');
 const { createBot, getBot } = require('./bot');
 const { startScheduler } = require('./scheduler');
 const {
@@ -27,9 +28,19 @@ if (!WEBAPP_URL) {
     process.exit(1);
 }
 
+// Rate limiting
+const apiLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 минут
+    max: 100,                  // макс 100 запросов с одного IP
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many requests, please try again later' }
+});
+
 // Middleware
 app.use(cors());
 app.use(express.json());
+app.use('/api', apiLimiter);
 
 // Serve static files (frontend)
 app.use(express.static(path.join(__dirname, '..')));
@@ -101,7 +112,16 @@ app.post('/api/habits', authMiddleware, async (req, res) => {
         if (!name || !emoji) {
             return res.status(400).json({ error: 'name and emoji are required' });
         }
-        const habit = await addHabit(req.user.id, name.trim(), emoji);
+        const trimmedName = name.trim();
+        if (trimmedName.length === 0 || trimmedName.length > 100) {
+            return res.status(400).json({ error: 'name must be 1–100 characters' });
+        }
+        // Один графемный кластер (эмодзи может быть многобайтным)
+        const emojiSegments = [...new Intl.Segmenter().segment(emoji)];
+        if (emojiSegments.length !== 1) {
+            return res.status(400).json({ error: 'emoji must be a single character' });
+        }
+        const habit = await addHabit(req.user.id, trimmedName, emoji);
         res.json(habit);
     } catch (error) {
         console.error('Add habit error:', error);
