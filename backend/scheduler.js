@@ -1,9 +1,6 @@
 const cron = require('node-cron');
-const { getAllEnabledReminders } = require('./db');
+const { getAllEnabledReminders, saveLastMessageId, getPendingDeletions, clearLastMessageId } = require('./db');
 const { sendReminder, deleteReminderMessage } = require('./bot');
-
-const DELETE_AFTER_MS = 45 * 60 * 1000; // 45 minutes
-const deletionQueue = []; // { userId, messageId, deleteAt }
 
 let schedulerTask = null;
 
@@ -33,14 +30,16 @@ function getCurrentTimeInTimezone(timezone) {
 function startScheduler(webAppUrl) {
     // Run every minute
     schedulerTask = cron.schedule('* * * * *', async () => {
-        const now = Date.now();
-
-        // Process auto-deletions
-        const toDelete = deletionQueue.filter(item => item.deleteAt <= now);
-        toDelete.forEach(item => {
-            deleteReminderMessage(item.userId, item.messageId);
-            deletionQueue.splice(deletionQueue.indexOf(item), 1);
-        });
+        // Process auto-deletions (persisted in DB, survives restarts)
+        try {
+            const pending = await getPendingDeletions();
+            for (const item of pending) {
+                await deleteReminderMessage(item.user_id, item.last_message_id);
+                await clearLastMessageId(item.user_id);
+            }
+        } catch (error) {
+            console.error('Deletion error:', error);
+        }
 
         // Send reminders
         try {
@@ -53,11 +52,7 @@ function startScheduler(webAppUrl) {
                     console.log(`Sending reminder to user ${reminder.user_id} at ${currentTime}`);
                     const messageId = await sendReminder(reminder.user_id, webAppUrl);
                     if (messageId) {
-                        deletionQueue.push({
-                            userId: reminder.user_id,
-                            messageId,
-                            deleteAt: now + DELETE_AFTER_MS
-                        });
+                        await saveLastMessageId(reminder.user_id, messageId);
                     }
                 }
             }

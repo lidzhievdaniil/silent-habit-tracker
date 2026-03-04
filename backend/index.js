@@ -12,6 +12,7 @@ const {
     getCompletions, toggleCompletion,
     getReminder, saveReminder, deleteReminder
 } = require('./db');
+const { getFeatures } = require('./features');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -43,7 +44,7 @@ app.use(express.json());
 app.use('/api', apiLimiter);
 
 // Serve static files (frontend)
-app.use(express.static(path.join(__dirname, '..')));
+app.use(express.static(path.join(__dirname, '..'), { extensions: ['html'] }));
 
 // Validate Telegram initData
 function validateInitData(initData) {
@@ -206,6 +207,12 @@ app.delete('/api/reminder', authMiddleware, async (req, res) => {
         console.error('Delete reminder error:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
+});
+
+// ── Feature flags ────────────────────────────────────────
+
+app.get('/api/features', authMiddleware, (req, res) => {
+    res.json(getFeatures(req.user.id));
 });
 
 // ── Health ───────────────────────────────────────────────

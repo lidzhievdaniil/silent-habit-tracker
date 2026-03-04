@@ -5,42 +5,92 @@ const pool = new Pool({
     ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false
 });
 
-// Initialize database — create tables if not exist
+// ── Migrations ───────────────────────────────────────────
+
+const MIGRATIONS = [
+    {
+        version: 1,
+        name: 'initial_schema',
+        async run(client) {
+            await client.query(`
+                CREATE TABLE IF NOT EXISTS habits (
+                    id BIGSERIAL PRIMARY KEY,
+                    user_id BIGINT NOT NULL,
+                    name TEXT NOT NULL,
+                    emoji TEXT NOT NULL,
+                    position INTEGER NOT NULL DEFAULT 0,
+                    created_at TIMESTAMPTZ DEFAULT NOW()
+                )
+            `);
+            await client.query(`
+                CREATE INDEX IF NOT EXISTS habits_user_idx ON habits(user_id)
+            `);
+            await client.query(`
+                CREATE TABLE IF NOT EXISTS completions (
+                    user_id BIGINT NOT NULL,
+                    habit_id BIGINT NOT NULL REFERENCES habits(id) ON DELETE CASCADE,
+                    completed_date DATE NOT NULL,
+                    PRIMARY KEY (user_id, habit_id, completed_date)
+                )
+            `);
+            await client.query(`
+                CREATE TABLE IF NOT EXISTS reminders (
+                    user_id BIGINT PRIMARY KEY,
+                    reminder_time TEXT NOT NULL,
+                    timezone TEXT DEFAULT 'Europe/Moscow',
+                    enabled BOOLEAN DEFAULT TRUE,
+                    created_at TIMESTAMPTZ DEFAULT NOW(),
+                    updated_at TIMESTAMPTZ DEFAULT NOW()
+                )
+            `);
+        }
+    },
+    {
+        version: 2,
+        name: 'reminder_last_message',
+        async run(client) {
+            await client.query(`
+                ALTER TABLE reminders
+                ADD COLUMN IF NOT EXISTS last_message_id BIGINT DEFAULT NULL,
+                ADD COLUMN IF NOT EXISTS last_sent_at TIMESTAMPTZ DEFAULT NULL
+            `);
+        }
+    },
+];
+
 async function initDb() {
+    // Таблица отслеживания миграций создаётся первой
     await pool.query(`
-        CREATE TABLE IF NOT EXISTS habits (
-            id BIGSERIAL PRIMARY KEY,
-            user_id BIGINT NOT NULL,
+        CREATE TABLE IF NOT EXISTS schema_migrations (
+            version INTEGER PRIMARY KEY,
             name TEXT NOT NULL,
-            emoji TEXT NOT NULL,
-            position INTEGER NOT NULL DEFAULT 0,
-            created_at TIMESTAMPTZ DEFAULT NOW()
+            applied_at TIMESTAMPTZ DEFAULT NOW()
         )
     `);
 
-    await pool.query(`
-        CREATE INDEX IF NOT EXISTS habits_user_idx ON habits(user_id)
-    `);
+    const { rows } = await pool.query('SELECT version FROM schema_migrations');
+    const applied = new Set(rows.map(r => r.version));
 
-    await pool.query(`
-        CREATE TABLE IF NOT EXISTS completions (
-            user_id BIGINT NOT NULL,
-            habit_id BIGINT NOT NULL REFERENCES habits(id) ON DELETE CASCADE,
-            completed_date DATE NOT NULL,
-            PRIMARY KEY (user_id, habit_id, completed_date)
-        )
-    `);
+    for (const migration of MIGRATIONS) {
+        if (applied.has(migration.version)) continue;
 
-    await pool.query(`
-        CREATE TABLE IF NOT EXISTS reminders (
-            user_id BIGINT PRIMARY KEY,
-            reminder_time TEXT NOT NULL,
-            timezone TEXT DEFAULT 'Europe/Moscow',
-            enabled BOOLEAN DEFAULT TRUE,
-            created_at TIMESTAMPTZ DEFAULT NOW(),
-            updated_at TIMESTAMPTZ DEFAULT NOW()
-        )
-    `);
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+            await migration.run(client);
+            await client.query(
+                'INSERT INTO schema_migrations (version, name) VALUES ($1, $2)',
+                [migration.version, migration.name]
+            );
+            await client.query('COMMIT');
+            console.log(`Migration ${migration.version} (${migration.name}) applied`);
+        } catch (err) {
+            await client.query('ROLLBACK');
+            throw err;
+        } finally {
+            client.release();
+        }
+    }
 
     console.log('Database initialized');
 }
@@ -141,6 +191,29 @@ async function getAllEnabledReminders() {
     return result.rows;
 }
 
+async function saveLastMessageId(userId, messageId) {
+    await pool.query(
+        'UPDATE reminders SET last_message_id = $2, last_sent_at = NOW() WHERE user_id = $1',
+        [userId, messageId]
+    );
+}
+
+async function getPendingDeletions() {
+    const result = await pool.query(
+        `SELECT user_id, last_message_id FROM reminders
+         WHERE last_message_id IS NOT NULL
+         AND last_sent_at <= NOW() - INTERVAL '45 minutes'`
+    );
+    return result.rows;
+}
+
+async function clearLastMessageId(userId) {
+    await pool.query(
+        'UPDATE reminders SET last_message_id = NULL, last_sent_at = NULL WHERE user_id = $1',
+        [userId]
+    );
+}
+
 async function deleteAllUserData(userId) {
     // habits deletion cascades to completions
     await pool.query('DELETE FROM habits WHERE user_id = $1', [userId]);
@@ -160,5 +233,8 @@ module.exports = {
     deleteReminder,
     getRemindersForTime,
     getAllEnabledReminders,
+    saveLastMessageId,
+    getPendingDeletions,
+    clearLastMessageId,
     deleteAllUserData
 };
