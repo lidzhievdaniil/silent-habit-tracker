@@ -1,6 +1,9 @@
 const cron = require('node-cron');
 const { getAllEnabledReminders } = require('./db');
-const { sendReminder } = require('./bot');
+const { sendReminder, deleteReminderMessage } = require('./bot');
+
+const DELETE_AFTER_MS = 45 * 60 * 1000; // 45 minutes
+const deletionQueue = []; // { userId, messageId, deleteAt }
 
 let schedulerTask = null;
 
@@ -30,6 +33,16 @@ function getCurrentTimeInTimezone(timezone) {
 function startScheduler(webAppUrl) {
     // Run every minute
     schedulerTask = cron.schedule('* * * * *', async () => {
+        const now = Date.now();
+
+        // Process auto-deletions
+        const toDelete = deletionQueue.filter(item => item.deleteAt <= now);
+        toDelete.forEach(item => {
+            deleteReminderMessage(item.userId, item.messageId);
+            deletionQueue.splice(deletionQueue.indexOf(item), 1);
+        });
+
+        // Send reminders
         try {
             const reminders = await getAllEnabledReminders();
 
@@ -38,7 +51,14 @@ function startScheduler(webAppUrl) {
 
                 if (currentTime === reminder.reminder_time) {
                     console.log(`Sending reminder to user ${reminder.user_id} at ${currentTime}`);
-                    await sendReminder(reminder.user_id, webAppUrl);
+                    const messageId = await sendReminder(reminder.user_id, webAppUrl);
+                    if (messageId) {
+                        deletionQueue.push({
+                            userId: reminder.user_id,
+                            messageId,
+                            deleteAt: now + DELETE_AFTER_MS
+                        });
+                    }
                 }
             }
         } catch (error) {

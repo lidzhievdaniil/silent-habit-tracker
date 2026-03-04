@@ -87,15 +87,24 @@ async function sendReminder(userId, webAppUrl) {
         const keyboard = new InlineKeyboard()
             .webApp('Открыть', webAppUrl);
 
-        await bot.api.sendMessage(
+        const msg = await bot.api.sendMessage(
             userId,
             'Время отметить привычки!\n\nНе забудь выполнить свои ежедневные цели.',
             { reply_markup: keyboard }
         );
-        return true;
+        return msg.message_id;
     } catch (error) {
         console.error(`Failed to send reminder to ${userId}:`, error.message);
-        return false;
+        return null;
+    }
+}
+
+async function deleteReminderMessage(userId, messageId) {
+    if (!bot) return;
+    try {
+        await bot.api.deleteMessage(userId, messageId);
+    } catch (error) {
+        // Message may already be deleted or too old — ignore
     }
 }
 
@@ -106,5 +115,6 @@ function getBot() {
 module.exports = {
     createBot,
     sendReminder,
+    deleteReminderMessage,
     getBot
 };
