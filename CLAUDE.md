@@ -108,17 +108,20 @@ CREATE TABLE reminders (
 
 - **Username:** @SilentHabitBot
 - **User ID владельца:** 609511513
-- Команды: `/start`, `/help`
+- Команды: `/start`, `/help`, `/deletedata`
+- Команды зарегистрированы через `setMyCommands()` — видны в меню "/"
 - При 409 Conflict (деплой) — автоматический retry до 5 раз с интервалом 10s
+- Напоминания автоудаляются из чата через 45 мин (`deletionQueue` в scheduler.js)
 
 ## Функциональность frontend (index.html)
 
 ### Основные функции
 - Добавление/удаление привычек с эмодзи-иконками (32 эмодзи)
+- Удаление с подтверждением через `tg.showConfirm` (нативный Telegram диалог)
 - Отметка выполнения с анимацией и фейерверками (оптимистичный UI)
-- Недельный обзор с кружками дней (выполнено/частично/сегодня)
+- Недельный обзор с кружками дней (выполнено/частично/сегодня — совмещённые стили)
 - Статистика: прогресс за день, максимальный стрик
-- Настройка напоминаний (время, вкл/выкл)
+- Настройка напоминаний (время в МСК, вкл/выкл)
 - Haptic feedback через Telegram WebApp API
 - Русский интерфейс, дата на русском
 
@@ -175,12 +178,73 @@ CREATE TABLE reminders (
 - Часовой пояс по умолчанию: Europe/Moscow
 - `pg.Pool` — connection pooling к Supabase
 
+## Критические паттерны — НЕ НАРУШАТЬ
+
+### Даты: только локальное время
+**НИКОГДА** не использовать `date.toISOString().split('T')[0]` для ключей дат — возвращает UTC, ломает данные у пользователей UTC+3 после 21:00.
+
+Всегда использовать хелпер `toLocalDateKey(d)`:
+```javascript
+function toLocalDateKey(d) {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+```
+Применяется в: `getTodayKey()`, `getDateBefore()`, `updateStreaks()`, `renderWeekView()`.
+
+PostgreSQL `DATE` тип — timezone-independent, серверная сторона не затронута.
+
+## Безопасность — текущее состояние
+
+### Что уже защищено ✅
+- **Telegram initData** — HMAC-SHA256 валидация на каждом API endpoint
+- **SQL injection** — параметризованные запросы (`pg` placeholders `$1, $2...`)
+- **Secrets** — BOT_TOKEN, DATABASE_URL только в `.env` / Render env vars (не в git)
+- **User isolation** — каждый endpoint фильтрует данные по `user_id` из initData
+- **Право на удаление** — `/deletedata` команда (GDPR/152-ФЗ)
+
+### Известные уязвимости / технический долг 🔴
+- **Supabase RLS отключён** — Row Level Security не настроен. При утечке `DATABASE_URL` все данные всех пользователей доступны напрямую. Единственная защита — backend валидация.
+- **Нет rate limiting** — API не защищён от спама/brute-force (нет `express-rate-limit`)
+- **Input validation на сервере слабая** — длина name/emoji привычки не ограничена на сервере (только UI)
+- **Нет Privacy Policy** — обязательно для публичного запуска (152-ФЗ РФ, GDPR EU)
+- **`/health` endpoint** — публичный, раскрывает что сервер жив (minor)
+
+### Что проверить перед публичным запуском
+- `git log --all --full-history -- backend/.env` — убедиться что .env никогда не попадал в историю
+- Проверить `.gitignore` содержит `backend/.env` и `node_modules/`
+- Проверить Render env vars: нет лишних переменных
+
 ## TODO
 
 - [x] Добавить систему тем (dark/light/warm)
 - [x] Задеплоить на Render (Starter plan)
 - [x] Перенести все данные пользователя на сервер (PostgreSQL/Supabase)
 - [x] Исправить 409 Conflict при деплое бота
-- [ ] Добавить PostHog аналитику (DAU, воронка, retention)
-- [ ] Улучшить UI/UX перед публичным запуском
+- [x] Критические UI/UX баги:
+  - UTC→Local date fix (toLocalDateKey хелпер)
+  - Week view: today-кружок всегда виден + совмещённые стили today+completed/partial
+  - Удаление привычки с подтверждением (tg.showConfirm)
+  - Тайм-пикер: border + подпись "по московскому времени (МСК)"
+- [x] Визуальный polish:
+  - Активная тема-точка: scale(1.15)
+  - Empty state через CSS класс `.habits-empty`
+  - Hover-стили для карточек привычек (`.habit-card:hover`, `.habit-card.completed:hover`)
+- [x] Добавить `/deletedata` команду в бота (право на удаление данных, 152-ФЗ/GDPR)
+- [x] Автоудаление напоминаний из чата через 45 мин (deletionQueue в scheduler.js)
+- [x] Прокрутка времени в стиле iOS Clock в разделе напоминаний (CSS scroll snap drum picker)
+
+### 🔴 Критично (безопасность) — до публичного запуска
+- [ ] **Включить Supabase RLS** — политики на таблицах habits/completions/reminders (защита от утечки DATABASE_URL)
+- [ ] **Rate limiting** — добавить `express-rate-limit` на API endpoints (защита от спама)
+- [ ] **Валидация входных данных на сервере** — ограничить длину name (макс 100 символов), проверять допустимые emoji
+- [ ] **Privacy Policy** — написать и разместить (152-ФЗ / GDPR), добавить ссылку в бота
+- [ ] **Аудит git-истории** — проверить что секреты никогда не попадали в репозиторий
+
+### Обычные задачи
+- [ ] Улучшить UI/UX перед публичным запуском (оставшиеся шероховатости)
 - [ ] Рассмотреть Liquid Glass эффекты (backdrop-filter: blur)
+- [ ] Продумать систему целей: большая цель → ежедневные привычки как путь к ней (пока без реализации)
+- [ ] Добавить аналитику при росте до 500+ MAU (рассмотреть PostHog self-hosted)
