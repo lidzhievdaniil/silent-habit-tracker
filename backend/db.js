@@ -141,6 +141,12 @@ async function getAllEnabledReminders() {
     return result.rows;
 }
 
+async function deleteAllUserData(userId) {
+    // habits deletion cascades to completions
+    await pool.query('DELETE FROM habits WHERE user_id = $1', [userId]);
+    await pool.query('DELETE FROM reminders WHERE user_id = $1', [userId]);
+}
+
 module.exports = {
     initDb,
     getHabits,
@@ -153,5 +159,6 @@ module.exports = {
     disableReminder,
     deleteReminder,
     getRemindersForTime,
-    getAllEnabledReminders
+    getAllEnabledReminders,
+    deleteAllUserData
 };
