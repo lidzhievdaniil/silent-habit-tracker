@@ -265,6 +265,13 @@
             font-weight: 400;
         }
 
+        .habits-empty {
+            text-align: center;
+            padding: 40px 0 32px;
+            color: var(--text-secondary);
+            font-size: 15px;
+        }
+
         .habits-list {
             display: flex;
             flex-direction: column;
@@ -284,12 +291,21 @@
             box-shadow: var(--card-shadow);
         }
 
+        .habit-card:hover {
+            background: var(--bg-card-hover);
+        }
+
         .habit-card:active {
             transform: scale(0.98);
         }
 
         .habit-card.completed {
             background: var(--success-glow);
+        }
+
+        .habit-card.completed:hover {
+            background: var(--success-glow);
+            filter: brightness(0.95);
         }
 
         .habit-checkbox {
@@ -842,6 +858,7 @@
 
         .theme-dot.active {
             outline-color: var(--accent);
+            transform: scale(1.15);
         }
 
         /* Glass-inspired subtle effects for light/warm themes */
@@ -1179,7 +1196,7 @@
             const today = getTodayKey();
 
             if (habits.length === 0) {
-                container.innerHTML = '<div style="text-align: center; padding: 32px 0; color: var(--text-muted);">Добавь свою первую привычку</div>';
+                container.innerHTML = '<div class="habits-empty">Добавь свою первую привычку</div>';
                 return;
             }
 
