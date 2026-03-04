@@ -668,43 +668,71 @@
             margin-bottom: 24px;
         }
 
-        .time-input {
-            width: 80px;
-            padding: 16px;
-            background: var(--bg-card);
-            border: 1.5px solid var(--border);
-            border-radius: 12px;
-            color: var(--text-primary);
-            font-size: 32px;
-            font-weight: 600;
-            font-family: inherit;
-            text-align: center;
-            outline: none;
-            -moz-appearance: textfield;
-        }
-
         .time-picker-hint {
             text-align: center;
             font-size: 12px;
             color: var(--text-muted);
-            margin-top: -16px;
+            margin-top: 4px;
             margin-bottom: 24px;
         }
 
-        .time-input::-webkit-outer-spin-button,
-        .time-input::-webkit-inner-spin-button {
-            -webkit-appearance: none;
-            margin: 0;
+        .drum-picker-wrapper {
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
         }
 
-        .time-input:focus {
-            box-shadow: 0 0 0 2px var(--accent);
+        .drum-column {
+            height: 220px;
+            width: 72px;
+            overflow-y: scroll;
+            scroll-snap-type: y mandatory;
+            overscroll-behavior: contain;
+            scrollbar-width: none;
+            -webkit-overflow-scrolling: touch;
+            padding: 88px 0;
+            -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 30%, black 70%, transparent 100%);
+            mask-image: linear-gradient(to bottom, transparent 0%, black 30%, black 70%, transparent 100%);
+        }
+
+        .drum-column::-webkit-scrollbar {
+            display: none;
+        }
+
+        .drum-item {
+            height: 44px;
+            width: 72px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 32px;
+            font-weight: 600;
+            color: var(--text-primary);
+            scroll-snap-align: center;
+            scroll-snap-stop: always;
+            user-select: none;
+        }
+
+        .drum-selection-indicator {
+            position: absolute;
+            top: 50%;
+            left: 0;
+            right: 0;
+            height: 44px;
+            transform: translateY(-50%);
+            border-top: 1px solid var(--border);
+            border-bottom: 1px solid var(--border);
+            pointer-events: none;
         }
 
         .time-separator {
             font-size: 32px;
             font-weight: 600;
             color: var(--text-muted);
+            margin-bottom: 0;
+            z-index: 1;
         }
 
         .reminder-toggle {
@@ -956,9 +984,12 @@
             <div class="modal-handle"></div>
             <div class="modal-title">Напоминания</div>
             <div class="time-picker-container">
-                <input type="number" class="time-input" id="reminderHour" min="0" max="23" value="09" placeholder="09">
-                <span class="time-separator">:</span>
-                <input type="number" class="time-input" id="reminderMinute" min="0" max="59" value="00" placeholder="00">
+                <div class="drum-picker-wrapper">
+                    <div class="drum-column" id="hourDrum"></div>
+                    <span class="time-separator">:</span>
+                    <div class="drum-column" id="minuteDrum"></div>
+                    <div class="drum-selection-indicator"></div>
+                </div>
             </div>
             <div class="time-picker-hint">по московскому времени (МСК)</div>
             <div class="reminder-toggle">
@@ -1534,12 +1565,47 @@
         // DOM elements for reminders
         const reminderBtn = document.getElementById('reminderBtn');
         const reminderModalOverlay = document.getElementById('reminderModalOverlay');
-        const reminderHourInput = document.getElementById('reminderHour');
-        const reminderMinuteInput = document.getElementById('reminderMinute');
+        const hourDrum = document.getElementById('hourDrum');
+        const minuteDrum = document.getElementById('minuteDrum');
         const reminderToggle = document.getElementById('reminderToggle');
         const saveReminderBtn = document.getElementById('saveReminder');
         const cancelReminderBtn = document.getElementById('cancelReminder');
         const reminderStatus = document.getElementById('reminderStatus');
+
+        // Build drum picker column
+        function buildDrum(columnEl, count) {
+            for (let i = 0; i < count; i++) {
+                const item = document.createElement('div');
+                item.className = 'drum-item';
+                item.textContent = String(i).padStart(2, '0');
+                columnEl.appendChild(item);
+            }
+        }
+
+        function setDrumValue(columnEl, value) {
+            columnEl.scrollTop = value * 44;
+        }
+
+        function getDrumValue(columnEl) {
+            return Math.round(columnEl.scrollTop / 44);
+        }
+
+        // Initialize drums
+        buildDrum(hourDrum, 24);
+        buildDrum(minuteDrum, 60);
+
+        // Haptic feedback on drum scroll settle
+        function addDrumHaptic(columnEl) {
+            let hapticTimer;
+            columnEl.addEventListener('scroll', () => {
+                clearTimeout(hapticTimer);
+                hapticTimer = setTimeout(() => {
+                    if (tg?.HapticFeedback) tg.HapticFeedback.selectionChanged();
+                }, 80);
+            });
+        }
+        addDrumHaptic(hourDrum);
+        addDrumHaptic(minuteDrum);
 
         // Get initData for API authorization
         function getInitData() {
@@ -1583,8 +1649,8 @@
                 return;
             }
 
-            const hour = reminderHourInput.value.padStart(2, '0');
-            const minute = reminderMinuteInput.value.padStart(2, '0');
+            const hour = String(getDrumValue(hourDrum)).padStart(2, '0');
+            const minute = String(getDrumValue(minuteDrum)).padStart(2, '0');
             const reminder_time = `${hour}:${minute}`;
 
             try {
@@ -1637,8 +1703,8 @@
 
         // Update reminder UI
         function updateReminderUI() {
-            reminderHourInput.value = reminderTime.hour;
-            reminderMinuteInput.value = reminderTime.minute;
+            setDrumValue(hourDrum, parseInt(reminderTime.hour));
+            setDrumValue(minuteDrum, parseInt(reminderTime.minute));
 
             if (reminderEnabled) {
                 reminderToggle.classList.add('active');
@@ -1657,17 +1723,15 @@
             reminderStatus.classList.toggle('active', isActive);
         }
 
-        // Format time input
-        function formatTimeInput(input, max) {
-            let value = parseInt(input.value) || 0;
-            value = Math.max(0, Math.min(max, value));
-            input.value = value.toString().padStart(2, '0');
-        }
-
         // Event listeners for reminder modal
         reminderBtn.addEventListener('click', () => {
-            updateReminderUI();
             reminderModalOverlay.classList.add('active');
+            requestAnimationFrame(() => {
+                setDrumValue(hourDrum, parseInt(reminderTime.hour));
+                setDrumValue(minuteDrum, parseInt(reminderTime.minute));
+                if (reminderEnabled) reminderToggle.classList.add('active');
+                else reminderToggle.classList.remove('active');
+            });
         });
 
         reminderModalOverlay.addEventListener('click', (e) => {
@@ -1683,9 +1747,6 @@
                 tg.HapticFeedback.impactOccurred('light');
             }
         });
-
-        reminderHourInput.addEventListener('blur', () => formatTimeInput(reminderHourInput, 23));
-        reminderMinuteInput.addEventListener('blur', () => formatTimeInput(reminderMinuteInput, 59));
 
         saveReminderBtn.addEventListener('click', saveReminderSettings);
 
