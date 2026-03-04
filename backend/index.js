@@ -215,6 +215,12 @@ app.get('/api/features', authMiddleware, (req, res) => {
     res.json(getFeatures(req.user.id));
 });
 
+// ── Static pages ─────────────────────────────────────────
+
+app.get('/privacy', (req, res) => {
+    res.sendFile(path.join(__dirname, '..', 'privacy.html'));
+});
+
 // ── Health ───────────────────────────────────────────────
 
 app.get('/health', (req, res) => {
